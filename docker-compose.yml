@@ -1,0 +1,66 @@
+version: '3.9'
+
+services:
+  # Redis - used for job queues and caching
+  redis:
+    image: redis:7-alpine
+    container_name: zerotrust-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - zerotrust-network
+
+  # Backend API server
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: zerotrust-backend
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      DATABASE_PATH: /app/data/zerotrust.db
+      REDIS_URL: redis://redis:6379
+      # Add other env vars from .env file
+    volumes:
+      - ./backend:/app
+      - ./backend/uploads:/app/uploads
+      - ./backend/data:/app/data
+      - backend_node_modules:/app/node_modules
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - zerotrust-network
+    command: npm run dev
+
+  # Optional: Adminer for database management
+  adminer:
+    image: adminer:latest
+    container_name: zerotrust-adminer
+    ports:
+      - "8080:8080"
+    depends_on:
+      - backend
+    networks:
+      - zerotrust-network
+    environment:
+      ADMINER_DEFAULT_SERVER: backend
+
+volumes:
+  redis_data:
+  backend_node_modules:
+
+networks:
+  zerotrust-network:
+    driver: bridge
